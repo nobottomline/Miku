@@ -6,12 +6,15 @@ on:
   pull_request:
     branches: [ main ]
 
+permissions:
+  contents: read
+  checks: write
+
 env:
   JAVA_VERSION: '17'
   NODE_VERSION: '20'
 
 jobs:
-  # Backend: Build + Test (single job to avoid double compilation)
   backend:
     name: Backend Build & Test
     runs-on: ubuntu-latest
@@ -55,12 +58,14 @@ jobs:
       - name: Compile all modules
         run: ./gradlew compileKotlin compileTestKotlin
 
-      - name: Run tests (101 tests)
+      - name: Run tests
         env:
           TEST_DATABASE_URL: jdbc:postgresql://localhost:5432/miku_test
           TEST_DATABASE_USERNAME: miku
           TEST_DATABASE_PASSWORD: miku
           REDIS_URL: redis://localhost:6379
+          FLARESOLVERR_URL: http://localhost:0
+          MINIO_ENDPOINT: http://localhost:0
         run: ./gradlew :apps:server:test
 
       - name: Build fat JAR
@@ -88,7 +93,6 @@ jobs:
           path: apps/server/build/test-results/test/*.xml
           reporter: java-junit
 
-  # Frontend: Type check + Build
   frontend:
     name: Frontend Build
     runs-on: ubuntu-latest
@@ -121,7 +125,6 @@ jobs:
           path: apps/web/dist/
           retention-days: 7
 
-  # Docker image (only on main push, after tests pass)
   docker:
     name: Docker Image
     runs-on: ubuntu-latest

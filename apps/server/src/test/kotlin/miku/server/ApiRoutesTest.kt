@@ -58,7 +58,7 @@ class ApiRoutesTest {
         assertEquals(HttpStatusCode.OK, response.status)
     }
 
-    // === Extensions ===
+    // === Extensions (local operations only — no external HTTP) ===
 
     @Test
     fun `list installed extensions should return array`() = testApplication {
@@ -70,24 +70,10 @@ class ApiRoutesTest {
     }
 
     @Test
-    fun `check updates should return array`() = testApplication {
-        application { module(config) }
-        val response = jsonClient().get("/api/v1/extensions/updates")
-        assertEquals(HttpStatusCode.OK, response.status)
-    }
-
-    @Test
     fun `search extensions without query should return 400`() = testApplication {
         application { module(config) }
         val response = jsonClient().get("/api/v1/extensions/search")
         assertEquals(HttpStatusCode.BadRequest, response.status)
-    }
-
-    @Test
-    fun `search extensions with query should return results`() = testApplication {
-        application { module(config) }
-        val response = jsonClient().get("/api/v1/extensions/search?q=asura")
-        assertEquals(HttpStatusCode.OK, response.status)
     }
 
     @Test
@@ -105,7 +91,7 @@ class ApiRoutesTest {
         val response = jsonClient().get("/api/v1/repos")
         assertEquals(HttpStatusCode.OK, response.status)
         val body = Json.decodeFromString<JsonArray>(response.bodyAsText())
-        assertTrue(body.size >= 1) // At least keiyoushi
+        assertTrue(body.size >= 1)
     }
 
     // === Cloudflare ===

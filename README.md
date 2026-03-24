@@ -3,7 +3,7 @@
 ![CI](https://github.com/nobottomline/miku/actions/workflows/ci.yml/badge.svg)
 ![Kotlin](https://img.shields.io/badge/Kotlin-2.1-blue?logo=kotlin)
 ![Ktor](https://img.shields.io/badge/Ktor-3.1-purple)
-![Tests](https://img.shields.io/badge/tests-101-brightgreen)
+![Tests](https://img.shields.io/badge/tests-99-brightgreen)
 ![License](https://img.shields.io/badge/license-MIT-green)
 
 A professional manga aggregator backend service with full [keiyoushi](https://github.com/keiyoushi/extensions) extension compatibility. Automatically loads ~1500 manga source extensions via APK-to-JAR conversion pipeline, exposes REST + GraphQL APIs, and includes a modern web frontend.

@@ -8,11 +8,17 @@ import okhttp3.OkHttpClient
 import okhttp3.Protocol
 import okhttp3.Response
 import okhttp3.ResponseBody.Companion.toResponseBody
+import java.io.File
 import java.util.concurrent.ConcurrentHashMap
 import java.util.concurrent.TimeUnit
 
 class NetworkHelper {
     val cookieJar = MemoryCookieJar()
+
+    init {
+        val cookieDir = File(System.getProperty("user.dir", "."), "data/cookies")
+        cookieJar.enablePersistence(cookieDir)
+    }
 
     private val cloudflareInterceptor = CloudflareProxyInterceptor(cookieJar)
 

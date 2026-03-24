@@ -78,7 +78,10 @@ fun Application.configureGraphQL() {
                     .build()
             )
 
-            call.respond(HttpStatusCode.OK, result.toSpecification())
+            // Serialize via graphql-java's built-in JSON serialization
+            // (Ktor's kotlinx.serialization can't handle mixed-type Maps from toSpecification())
+            val jsonResult = mapToJson(result.toSpecification())
+            call.respondText(jsonResult, io.ktor.http.ContentType.Application.Json)
         }
 
         get("/graphiql") {
@@ -97,22 +100,36 @@ class CustomSchemaHooks : SchemaGeneratorHooks {
     }
 }
 
+/**
+ * Convert Any? map to JSON string — handles nested Maps, Lists, nulls, primitives.
+ * Needed because graphql-java's toSpecification() returns Map<String, Any?> which
+ * Ktor's kotlinx.serialization cannot serialize (mixed-type collections).
+ */
+private fun mapToJson(value: Any?): String = when (value) {
+    null -> "null"
+    is String -> "\"${value.replace("\\", "\\\\").replace("\"", "\\\"").replace("\n", "\\n").replace("\r", "\\r")}\""
+    is Number -> value.toString()
+    is Boolean -> value.toString()
+    is Map<*, *> -> value.entries.joinToString(",", "{", "}") { (k, v) -> "\"$k\":${mapToJson(v)}" }
+    is List<*> -> value.joinToString(",", "[", "]") { mapToJson(it) }
+    is Enum<*> -> "\"${value.name}\""
+    else -> "\"$value\""
+}
+
 private val GRAPHIQL_HTML = """
 <!DOCTYPE html>
 <html><head><title>Miku GraphiQL</title>
-<link href="https://unpkg.com/graphiql/graphiql.min.css" rel="stylesheet" />
+<link href="https://cdn.jsdelivr.net/npm/graphiql@3.7.0/graphiql.min.css" rel="stylesheet" />
 </head><body style="margin:0;">
 <div id="graphiql" style="height:100vh;"></div>
-<script crossorigin src="https://unpkg.com/react/umd/react.production.min.js"></script>
-<script crossorigin src="https://unpkg.com/react-dom/umd/react-dom.production.min.js"></script>
-<script crossorigin src="https://unpkg.com/graphiql/graphiql.min.js"></script>
+<script crossorigin src="https://cdn.jsdelivr.net/npm/react@18.3.1/umd/react.production.min.js"></script>
+<script crossorigin src="https://cdn.jsdelivr.net/npm/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+<script crossorigin src="https://cdn.jsdelivr.net/npm/graphiql@3.7.0/graphiql.min.js"></script>
 <script>
-  ReactDOM.render(
-    React.createElement(GraphiQL, {
-      fetcher: GraphiQL.createFetcher({ url: '/api/graphql' }),
-    }),
-    document.getElementById('graphiql'),
-  );
+  const root = ReactDOM.createRoot(document.getElementById('graphiql'));
+  root.render(React.createElement(GraphiQL, {
+    fetcher: GraphiQL.createFetcher({ url: '/api/graphql' }),
+  }));
 </script>
 </body></html>
 """.trimIndent()

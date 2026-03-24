@@ -163,6 +163,7 @@ class ApkExtractor(
                 val manifestXml = apk.manifestXml
                 var sourceClass: String? = null
                 var isNsfw = false
+                var libVersion = 0.0
 
                 // Parse meta-data from manifest XML
                 val metaDataRegex = """<meta-data[^>]*android:name="([^"]*)"[^>]*android:value="([^"]*)"[^>]*/>""".toRegex()
@@ -172,6 +173,7 @@ class ApkExtractor(
                     when (name) {
                         "tachiyomi.extension.class" -> sourceClass = value
                         "tachiyomi.extension.nsfw" -> isNsfw = value == "1"
+                        "tachiyomi.extension.lib_version" -> libVersion = value.toDoubleOrNull() ?: 0.0
                     }
                 }
 
@@ -183,7 +185,13 @@ class ApkExtractor(
                     when (name) {
                         "tachiyomi.extension.class" -> sourceClass = sourceClass ?: value
                         "tachiyomi.extension.nsfw" -> isNsfw = isNsfw || value == "1"
+                        "tachiyomi.extension.lib_version" -> if (libVersion == 0.0) libVersion = value.toDoubleOrNull() ?: 0.0
                     }
+                }
+
+                // Validate lib version (must be between 1.3 and 1.5)
+                if (libVersion > 0 && (libVersion < 1.3 || libVersion > 1.5)) {
+                    logger.warn("Extension ${apkFile.name} has incompatible lib version $libVersion (expected 1.3-1.5)")
                 }
 
                 // Infer lang from package name

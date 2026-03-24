@@ -20,7 +20,7 @@ fun Application.configureSecurity(config: ServerConfig) {
         header("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
         header(
             "Content-Security-Policy",
-            "default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com; style-src 'self' 'unsafe-inline' https://unpkg.com; img-src 'self' data: https:; font-src 'self' https://unpkg.com"
+            "default-src 'self'; script-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net; style-src 'self' 'unsafe-inline' https://unpkg.com https://cdn.jsdelivr.net; img-src 'self' data: https:; font-src 'self' data: https://unpkg.com https://cdn.jsdelivr.net"
         )
         header("X-Powered-By", "Miku")
     }

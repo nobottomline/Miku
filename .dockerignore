@@ -1,0 +1,16 @@
+.git
+.gradle
+.idea
+*.iml
+build
+*/build
+.env
+.env.local
+data
+logs
+extensions
+.DS_Store
+*.md
+docker-compose*.yml
+.dockerignore
+Dockerfile

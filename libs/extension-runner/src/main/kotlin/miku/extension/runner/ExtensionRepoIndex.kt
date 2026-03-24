@@ -17,6 +17,7 @@ data class ExtensionRepoEntry(
     val version: String,
     val nsfw: Int = 0,
     val sources: List<ExtensionRepoSource> = emptyList(),
+    val repoUrl: String? = null,
 ) {
     val isNsfw: Boolean get() = nsfw == 1
 }

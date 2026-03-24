@@ -11,13 +11,16 @@ import java.io.File
 class ExtensionManager(
     private val extensionsDir: File = File(System.getProperty("user.dir"), "extensions"),
     private val cacheDir: File = File(System.getProperty("user.dir"), "data/cache"),
-    private val networkHelper: NetworkHelper = NetworkHelper(),
+    val networkHelper: NetworkHelper = NetworkHelper(),
     repoUrl: String = ExtensionRepository.DEFAULT_REPO_URL,
 ) {
     private val logger = LoggerFactory.getLogger(ExtensionManager::class.java)
     private val apkExtractor = ApkExtractor(cacheDir)
     private val loader = ExtensionLoader(extensionsDir, apkExtractor)
     val registry = ExtensionRegistry()
+
+    /** Callback for install progress events (set by server for WebSocket push) */
+    var onInstallEvent: ((pkg: String, name: String, step: String) -> Unit)? = null
     val repository = ExtensionRepository(
         repoUrl = repoUrl,
         apkCacheDir = File(cacheDir, "apk"),
@@ -67,6 +70,7 @@ class ExtensionManager(
 
     fun installFromRepo(entry: ExtensionRepoEntry): ExtensionInfo {
         logger.info("Installing extension: ${entry.name} (${entry.pkg})")
+        onInstallEvent?.invoke(entry.pkg, entry.name, "downloading")
 
         // Unregister old version if exists
         registry.getExtension(entry.pkg)?.let {
@@ -75,6 +79,7 @@ class ExtensionManager(
 
         // Download APK
         val apkFile = repository.downloadApk(entry)
+        onInstallEvent?.invoke(entry.pkg, entry.name, "converting")
 
         // Copy APK to extensions directory for persistence
         val targetApk = File(extensionsDir, entry.apk)
@@ -83,10 +88,12 @@ class ExtensionManager(
         }
 
         // Load extension from APK
+        onInstallEvent?.invoke(entry.pkg, entry.name, "loading")
         val extension = loader.loadApk(targetApk)
             ?: throw RuntimeException("Failed to load extension: ${entry.name}")
 
         registry.register(extension)
+        onInstallEvent?.invoke(entry.pkg, entry.name, "completed")
 
         logger.info("Installed: ${extension.name} with ${extension.sources.size} source(s)")
         return extension
@@ -117,11 +124,15 @@ class ExtensionManager(
         val extension = registry.getExtension(packageName) ?: return false
         registry.unregister(packageName)
 
-        // Delete APK/JAR files
+        // Delete APK/JAR files — match by exact package name pattern
+        val safePackageName = packageName.replace(Regex("[^a-zA-Z0-9._]"), "")
         extensionsDir.listFiles()?.forEach { file ->
-            if (file.nameWithoutExtension.contains(packageName.substringAfterLast("."))) {
+            if ((file.extension == "apk" || file.extension == "jar") &&
+                file.name.contains(safePackageName.replace(".", "-")) ||
+                file.name.contains(safePackageName.replace("eu.kanade.tachiyomi.extension.", "tachiyomi-"))
+            ) {
                 file.delete()
-                logger.info("Deleted: ${file.name}")
+                logger.info("Deleted extension file: ${file.name}")
             }
         }
 

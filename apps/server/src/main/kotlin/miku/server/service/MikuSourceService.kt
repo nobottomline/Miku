@@ -3,7 +3,6 @@ package miku.server.service
 import eu.kanade.tachiyomi.source.CatalogueSource
 import eu.kanade.tachiyomi.source.model.Filter
 import eu.kanade.tachiyomi.source.model.SManga
-import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.online.HttpSource
 import kotlinx.datetime.Instant
 import miku.domain.model.*
@@ -14,110 +13,101 @@ import miku.extension.runner.SourceExecutor
 class MikuSourceService(
     private val executor: SourceExecutor,
     private val registry: ExtensionRegistry,
+    private val cache: RedisCacheService,
 ) : SourceService {
 
+    // Use full URL in cache key (Base64 encoded to be Redis-safe) instead of hashCode to avoid collisions
+    private fun urlKey(url: String): String = java.util.Base64.getUrlEncoder().withoutPadding().encodeToString(url.toByteArray())
+
     override fun getAllSources(): List<SourceInfo> {
-        return registry.getAllSources().map { source ->
-            SourceInfo(
-                id = source.id,
-                name = source.name,
-                lang = source.lang,
-                supportsLatest = (source as? CatalogueSource)?.supportsLatest ?: false,
-                baseUrl = (source as? HttpSource)?.baseUrl,
-            )
-        }
+        return registry.getAllSources().map { it.toSourceInfo() }
     }
 
     override fun getSource(sourceId: Long): SourceInfo? {
-        val source = registry.getSource(sourceId) ?: return null
-        return SourceInfo(
-            id = source.id,
-            name = source.name,
-            lang = source.lang,
-            supportsLatest = (source as? CatalogueSource)?.supportsLatest ?: false,
-            baseUrl = (source as? HttpSource)?.baseUrl,
-        )
+        return registry.getSource(sourceId)?.toSourceInfo()
     }
 
     override fun getSourcesByLang(lang: String): List<SourceInfo> {
-        return registry.getSourcesByLang(lang).map { source ->
-            SourceInfo(
-                id = source.id,
-                name = source.name,
-                lang = source.lang,
-                supportsLatest = (source as? CatalogueSource)?.supportsLatest ?: false,
-                baseUrl = (source as? HttpSource)?.baseUrl,
-            )
-        }
+        return registry.getSourcesByLang(lang).map { it.toSourceInfo() }
     }
 
     override fun getAvailableLanguages(): Set<String> = registry.getAvailableLanguages()
 
     override fun getFilters(sourceId: Long): List<FilterData> {
-        val filters = executor.getFilters(sourceId)
-        return filters.map { it.toFilterData() }
+        return executor.getFilters(sourceId).map { it.toFilterData() }
     }
 
     override suspend fun getPopularManga(sourceId: Long, page: Int): MangaPageResult {
-        val result = executor.getPopularManga(sourceId, page)
-        return MangaPageResult(
-            mangas = result.mangas.map { it.toManga(sourceId) },
-            hasNextPage = result.hasNextPage,
-            page = page,
-        )
-    }
-
-    override suspend fun getLatestUpdates(sourceId: Long, page: Int): MangaPageResult {
-        val result = executor.getLatestUpdates(sourceId, page)
-        return MangaPageResult(
-            mangas = result.mangas.map { it.toManga(sourceId) },
-            hasNextPage = result.hasNextPage,
-            page = page,
-        )
-    }
-
-    override suspend fun searchManga(sourceId: Long, page: Int, query: String): MangaPageResult {
-        val result = executor.searchManga(sourceId, page, query)
-        return MangaPageResult(
-            mangas = result.mangas.map { it.toManga(sourceId) },
-            hasNextPage = result.hasNextPage,
-            page = page,
-        )
-    }
-
-    override suspend fun getMangaDetails(sourceId: Long, mangaUrl: String): Manga {
-        val sManga = SManga.create().apply { url = mangaUrl; title = "" }
-        val details = executor.getMangaDetails(sourceId, sManga)
-        // mangaDetailsParse creates new SManga without url — ensure it's set
-        try { details.url } catch (_: UninitializedPropertyAccessException) { details.url = mangaUrl }
-        return details.toManga(sourceId)
-    }
-
-    override suspend fun getChapterList(sourceId: Long, mangaUrl: String): List<Chapter> {
-        val sManga = SManga.create().apply { url = mangaUrl }
-        val chapters = executor.getChapterList(sourceId, sManga)
-        return chapters.mapIndexed { index, ch ->
-            Chapter(
-                sourceId = sourceId,
-                mangaId = 0,
-                url = ch.url,
-                name = ch.name,
-                chapterNumber = ch.chapter_number,
-                scanlator = ch.scanlator,
-                dateUpload = if (ch.date_upload > 0) Instant.fromEpochMilliseconds(ch.date_upload) else null,
+        return cache.getOrSet("source:$sourceId:popular:$page") {
+            val result = executor.getPopularManga(sourceId, page)
+            MangaPageResult(
+                mangas = result.mangas.map { it.toManga(sourceId) },
+                hasNextPage = result.hasNextPage,
+                page = page,
             )
         }
     }
 
-    override suspend fun getPageList(sourceId: Long, chapterUrl: String): List<PageData> {
-        val sChapter = eu.kanade.tachiyomi.source.model.SChapter.create().apply { url = chapterUrl }
-        val pages = executor.getPageList(sourceId, sChapter)
-        return pages.map { page ->
-            PageData(
-                index = page.index,
-                url = page.url,
-                imageUrl = page.imageUrl,
+    override suspend fun getLatestUpdates(sourceId: Long, page: Int): MangaPageResult {
+        return cache.getOrSet("source:$sourceId:latest:$page") {
+            val result = executor.getLatestUpdates(sourceId, page)
+            MangaPageResult(
+                mangas = result.mangas.map { it.toManga(sourceId) },
+                hasNextPage = result.hasNextPage,
+                page = page,
             )
+        }
+    }
+
+    override suspend fun searchManga(sourceId: Long, page: Int, query: String): MangaPageResult {
+        val cacheKey = "source:$sourceId:search:${urlKey(query)}:$page"
+        return cache.getOrSet(cacheKey) {
+            val result = executor.searchManga(sourceId, page, query)
+            MangaPageResult(
+                mangas = result.mangas.map { it.toManga(sourceId) },
+                hasNextPage = result.hasNextPage,
+                page = page,
+            )
+        }
+    }
+
+    override suspend fun getMangaDetails(sourceId: Long, mangaUrl: String): Manga {
+        val cacheKey = "source:$sourceId:details:${urlKey(mangaUrl)}"
+        return cache.getOrSet(cacheKey) {
+            val sManga = SManga.create().apply { url = mangaUrl; title = "" }
+            val details = executor.getMangaDetails(sourceId, sManga)
+            try { details.url } catch (_: UninitializedPropertyAccessException) { details.url = mangaUrl }
+            details.toManga(sourceId)
+        }
+    }
+
+    override suspend fun getChapterList(sourceId: Long, mangaUrl: String): List<Chapter> {
+        val cacheKey = "source:$sourceId:chapters:${urlKey(mangaUrl)}"
+        return cache.getOrSet(cacheKey) {
+            val sManga = SManga.create().apply { url = mangaUrl }
+            val chapters = executor.getChapterList(sourceId, sManga)
+            chapters.map { ch ->
+                Chapter(
+                    sourceId = sourceId,
+                    mangaId = 0,
+                    url = ch.url,
+                    name = ch.name,
+                    chapterNumber = ch.chapter_number,
+                    scanlator = ch.scanlator,
+                    dateUpload = if (ch.date_upload > 0) Instant.fromEpochMilliseconds(ch.date_upload) else null,
+                )
+            }
+        }
+    }
+
+    override suspend fun getPageList(sourceId: Long, chapterUrl: String): List<PageData> {
+        val cacheKey = "source:$sourceId:pages:${urlKey(chapterUrl)}"
+        return cache.getOrSet(cacheKey) {
+            val sChapter = eu.kanade.tachiyomi.source.model.SChapter.create().apply { url = chapterUrl }
+            val pages = executor.getPageList(sourceId, sChapter)
+            pages.map { page ->
+                PageData(index = page.index, url = page.url, imageUrl = page.imageUrl)
+            }
         }
     }
 
@@ -131,6 +121,14 @@ class MikuSourceService(
     }
 
     // Conversion helpers
+    private fun eu.kanade.tachiyomi.source.Source.toSourceInfo() = SourceInfo(
+        id = id,
+        name = name,
+        lang = lang,
+        supportsLatest = (this as? CatalogueSource)?.supportsLatest ?: false,
+        baseUrl = (this as? HttpSource)?.baseUrl,
+    )
+
     private fun SManga.toManga(sourceId: Long): Manga {
         val safeUrl = try { url } catch (_: UninitializedPropertyAccessException) { "" }
         val safeTitle = try { title } catch (_: UninitializedPropertyAccessException) { "" }
@@ -161,8 +159,7 @@ class MikuSourceService(
             state?.let { FilterData.SortSelection(it.index, it.ascending) }
         )
         is Filter.Group<*> -> FilterData.Group(
-            name,
-            (state as List<Filter<*>>).map { it.toFilterData() }
+            name, (state as List<Filter<*>>).map { it.toFilterData() }
         )
     }
 }

@@ -1,0 +1,143 @@
+name: CI
+
+on:
+  push:
+    branches: [ main, develop ]
+  pull_request:
+    branches: [ main ]
+
+env:
+  JAVA_VERSION: '17'
+  NODE_VERSION: '20'
+
+jobs:
+  # Backend: Build + Test (single job to avoid double compilation)
+  backend:
+    name: Backend Build & Test
+    runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_DB: miku_test
+          POSTGRES_USER: miku
+          POSTGRES_PASSWORD: miku
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U miku -d miku_test"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 3s
+          --health-retries 5
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK ${{ env.JAVA_VERSION }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ env.JAVA_VERSION }}
+          distribution: 'temurin'
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Compile all modules
+        run: ./gradlew compileKotlin compileTestKotlin
+
+      - name: Run tests (101 tests)
+        env:
+          TEST_DATABASE_URL: jdbc:postgresql://localhost:5432/miku_test
+          TEST_DATABASE_USERNAME: miku
+          TEST_DATABASE_PASSWORD: miku
+          REDIS_URL: redis://localhost:6379
+        run: ./gradlew :apps:server:test
+
+      - name: Build fat JAR
+        run: ./gradlew :apps:server:buildFatJar
+
+      - name: Upload JAR artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: miku-server-jar
+          path: apps/server/build/libs/miku-server.jar
+          retention-days: 7
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: apps/server/build/reports/tests/
+
+      - name: Test summary
+        if: always()
+        uses: dorny/test-reporter@v1
+        with:
+          name: Test Results
+          path: apps/server/build/test-results/test/*.xml
+          reporter: java-junit
+
+  # Frontend: Type check + Build
+  frontend:
+    name: Frontend Build
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: 'npm'
+          cache-dependency-path: apps/web/package-lock.json
+
+      - name: Install dependencies
+        working-directory: apps/web
+        run: npm ci
+
+      - name: Type check
+        working-directory: apps/web
+        run: npx tsc --noEmit
+
+      - name: Build
+        working-directory: apps/web
+        run: npm run build
+
+      - name: Upload build artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: miku-web-dist
+          path: apps/web/dist/
+          retention-days: 7
+
+  # Docker image (only on main push, after tests pass)
+  docker:
+    name: Docker Image
+    runs-on: ubuntu-latest
+    needs: [backend, frontend]
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Build Docker image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          tags: miku-server:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

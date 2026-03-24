@@ -11,6 +11,7 @@ kotlinx-serialization = "1.8.0"
 kotlinx-datetime = "0.6.2"
 graphql-kotlin = "8.3.0"
 caffeine = "3.1.8"
+micrometer = "1.14.4"
 argon2 = "2.11"
 jwt = "4.4.0"
 hikari = "6.2.1"
@@ -24,6 +25,11 @@ junit = "5.11.4"
 testcontainers = "1.20.4"
 ktor-test = "3.1.1"
 mockk = "1.13.14"
+dotenv = "6.4.2"
+jedis = "5.2.0"
+minio = "8.5.14"
+itext = "9.1.0"
+ktor-swagger = "4.1.0"
 
 [libraries]
 # Ktor Server
@@ -87,8 +93,27 @@ jwt = { module = "com.auth0:java-jwt", version.ref = "jwt" }
 # Caching
 caffeine = { module = "com.github.ben-manes.caffeine:caffeine", version.ref = "caffeine" }
 
+# Metrics
+ktor-server-metrics-micrometer = { module = "io.ktor:ktor-server-metrics-micrometer", version.ref = "ktor" }
+micrometer-prometheus = { module = "io.micrometer:micrometer-registry-prometheus", version.ref = "micrometer" }
+
 # Logging
 logback = { module = "ch.qos.logback:logback-classic", version.ref = "logback" }
+
+# Environment
+dotenv = { module = "io.github.cdimascio:dotenv-kotlin", version.ref = "dotenv" }
+
+# Redis
+jedis = { module = "redis.clients:jedis", version.ref = "jedis" }
+
+# Object Storage
+minio = { module = "io.minio:minio", version.ref = "minio" }
+
+# PDF generation
+itext-core = { module = "com.itextpdf:itext-core", version.ref = "itext" }
+
+# API Documentation
+ktor-swagger = { module = "io.github.smiley4:ktor-swagger-ui", version.ref = "ktor-swagger" }
 
 # RxJava (for extension compat)
 rxjava = { module = "io.reactivex:rxjava", version.ref = "rxjava" }

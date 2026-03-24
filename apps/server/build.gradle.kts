@@ -40,6 +40,14 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.kotlinx.datetime)
 
+    implementation(libs.dotenv)
+    implementation(libs.jedis)
+    implementation(libs.minio)
+    implementation(libs.itext.core)
+    implementation(libs.ktor.server.metrics.micrometer)
+    implementation(libs.micrometer.prometheus)
+    // ktor-swagger removed — using manual OpenAPI spec (ConfigureSwagger.kt)
+
     testImplementation(platform("org.junit:junit-bom:5.12.0"))
     testImplementation("org.junit.jupiter:junit-jupiter")
     testRuntimeOnly("org.junit.platform:junit-platform-launcher")

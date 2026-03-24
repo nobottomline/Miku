@@ -11,9 +11,19 @@ import miku.server.config.configureRateLimiting
 import miku.server.config.configureRouting
 import miku.server.config.configureSecurity
 import miku.server.config.configureSerialization
+import miku.server.config.configureMetrics
+import miku.server.config.configureSwagger
+import miku.server.config.configureWebSocket
+import io.github.cdimascio.dotenv.dotenv
 import org.slf4j.LoggerFactory
 
 fun main() {
+    // Load .env file into system properties (before any config reads)
+    val env = dotenv {
+        ignoreIfMissing = true
+        systemProperties = true
+    }
+
     val logger = LoggerFactory.getLogger("miku.server")
     val config = ServerConfig.load()
 
@@ -33,5 +43,8 @@ fun Application.module(config: ServerConfig = ServerConfig.load()) {
     configureAuth(config)
     configureRateLimiting()
     configureErrorHandling()
+    configureMetrics()
+    configureWebSocket()
     configureRouting()
+    configureSwagger()
 }

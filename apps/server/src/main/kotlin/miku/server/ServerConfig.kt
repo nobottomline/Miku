@@ -54,7 +54,7 @@ data class ServerConfig(
         }
 
         private fun env(name: String, default: String): String =
-            System.getenv(name) ?: default
+            System.getenv(name) ?: System.getProperty(name) ?: default
     }
 }
 

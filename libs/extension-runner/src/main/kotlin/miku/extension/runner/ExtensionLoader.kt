@@ -44,7 +44,7 @@ class ExtensionLoader(
         return try {
             logger.info("Loading JAR: ${jarFile.name}")
 
-            val classLoader = URLClassLoader(
+            val classLoader = ChildFirstClassLoader(
                 arrayOf(jarFile.toURI().toURL()),
                 parentClassLoader,
             )
@@ -94,7 +94,7 @@ class ExtensionLoader(
     }
 
     private fun loadFromExtracted(extracted: ApkExtractor.ExtractedExtension): ExtensionInfo? {
-        val classLoader = URLClassLoader(
+        val classLoader = ChildFirstClassLoader(
             arrayOf(extracted.jarFile.toURI().toURL()),
             parentClassLoader,
         )

@@ -3,20 +3,48 @@
 build/
 !gradle/wrapper/gradle-wrapper.jar
 
+# Kotlin
+.kotlin/
+
 # IDE
 .idea/
 *.iml
 .vscode/
+*.swp
+*.swo
+*~
 
 # OS
 .DS_Store
 Thumbs.db
+Desktop.ini
 
-# Runtime
+# Runtime data
 *.log
+logs/
 extensions/
 data/
 
-# Env
+# Environment (secrets)
 .env
 .env.local
+.env.production
+
+# Node.js
+node_modules/
+apps/web/dist/
+
+# Testing tools
+.playwright-mcp/
+
+# Java/Kotlin artifacts
+*.class
+*.jar
+!gradle/wrapper/gradle-wrapper.jar
+hs_err_pid*
+
+# Temporary files
+*.tmp
+*.bak
+*.orig
+/tmp/

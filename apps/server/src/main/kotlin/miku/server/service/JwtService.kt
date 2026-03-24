@@ -47,7 +47,11 @@ class JwtService(private val config: ServerConfig) {
 
     fun isRefreshToken(token: String): Boolean {
         return try {
-            val decoded = JWT.decode(token)
+            val verifier = JWT.require(algorithm)
+                .withIssuer(config.jwtIssuer)
+                .withAudience(config.jwtAudience)
+                .build()
+            val decoded = verifier.verify(token)
             decoded.getClaim("type").asString() == "refresh"
         } catch (_: Exception) {
             false

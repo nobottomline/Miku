@@ -10,7 +10,7 @@ class DatabaseFactory(private val config: DatabaseConfig) {
     private val logger = LoggerFactory.getLogger(DatabaseFactory::class.java)
     private lateinit var dataSource: HikariDataSource
 
-    fun connect(): Database {
+    fun connect(maxRetries: Int = 15, retryDelayMs: Long = 5000): Database {
         logger.info("Connecting to database at ${config.url}")
 
         val hikariConfig = HikariConfig().apply {
@@ -21,20 +21,35 @@ class DatabaseFactory(private val config: DatabaseConfig) {
             maximumPoolSize = config.maxPoolSize
             minimumIdle = config.minIdle
             idleTimeout = config.idleTimeout
-            connectionTimeout = config.connectionTimeout
+            connectionTimeout = 5_000 // 5s during init, HikariCP will use longer timeout after pool is ready
             maxLifetime = config.maxLifetime
             isAutoCommit = false
 
             // Security: prevent SQL injection via connection properties
             addDataSourceProperty("prepareThreshold", "5")
             addDataSourceProperty("preparedStatementCacheQueries", "256")
+            // Don't fail fast — let HikariCP retry
+            initializationFailTimeout = -1
         }
 
         dataSource = HikariDataSource(hikariConfig)
 
-        // Run migrations
-        runMigrations()
+        // Wait for database to be ready
+        for (attempt in 1..maxRetries) {
+            try {
+                dataSource.connection.use { it.isValid(3) }
+                logger.info("Database connection established (attempt $attempt)")
+                break
+            } catch (e: Exception) {
+                if (attempt == maxRetries) {
+                    throw RuntimeException("Database not available after $maxRetries attempts: ${e.message}", e)
+                }
+                logger.warn("Database not ready (attempt $attempt/$maxRetries), retrying in ${retryDelayMs}ms...")
+                Thread.sleep(retryDelayMs)
+            }
+        }
 
+        runMigrations()
         return Database.connect(dataSource)
     }
 

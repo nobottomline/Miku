@@ -91,10 +91,66 @@ class ApkExtractor(
             outputJar.parentFile.mkdirs()
             Files.move(tempJar, outputJar.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
 
+            // Copy resource files from APK into JAR (assets, i18n, etc.)
+            copyApkResources(apkFile, outputJar)
+
+            // Patch for Kotlin version compatibility (inject Result compat for Kotlin 1.x extensions)
+            KotlinCompatPatcher.patchJar(outputJar)
+
             logger.info("Successfully converted: ${apkFile.name} -> ${outputJar.name}")
         } catch (e: Exception) {
             logger.error("Failed to convert DEX to JAR: ${apkFile.name}", e)
             throw ExtensionConversionException("Failed to convert ${apkFile.name}: ${e.message}", e)
+        }
+    }
+
+    /**
+     * Copy non-DEX resources from APK into the converted JAR.
+     * Extensions may bundle assets (i18n, configs, etc.) that they load via ClassLoader.getResource().
+     */
+    private fun copyApkResources(apkFile: File, jarFile: File) {
+        val skipPrefixes = setOf("classes", "META-INF/", "AndroidManifest", "res/", "resources.arsc", "lib/")
+        val skipSuffixes = setOf(".dex", ".SF", ".RSA", ".MF")
+
+        try {
+            val tempJar = Files.createTempFile("miku-resources-", ".jar")
+
+            java.util.jar.JarFile(jarFile).use { existingJar ->
+                java.util.jar.JarOutputStream(java.io.FileOutputStream(tempJar.toFile())).use { output ->
+                    val existingEntries = mutableSetOf<String>()
+
+                    // Copy existing JAR entries
+                    existingJar.entries().asSequence().forEach { entry ->
+                        existingEntries.add(entry.name)
+                        output.putNextEntry(java.util.jar.JarEntry(entry.name))
+                        existingJar.getInputStream(entry).copyTo(output)
+                        output.closeEntry()
+                    }
+
+                    // Copy resources from APK
+                    ZipFile(apkFile).use { apk ->
+                        apk.entries().asSequence()
+                            .filter { entry ->
+                                !entry.isDirectory &&
+                                    skipPrefixes.none { entry.name.startsWith(it) } &&
+                                    skipSuffixes.none { entry.name.endsWith(it) } &&
+                                    entry.name !in existingEntries
+                            }
+                            .forEach { entry ->
+                                try {
+                                    output.putNextEntry(java.util.jar.JarEntry(entry.name))
+                                    apk.getInputStream(entry).copyTo(output)
+                                    output.closeEntry()
+                                    logger.debug("Copied resource: ${entry.name}")
+                                } catch (_: Exception) {}
+                            }
+                    }
+                }
+            }
+
+            Files.move(tempJar, jarFile.toPath(), java.nio.file.StandardCopyOption.REPLACE_EXISTING)
+        } catch (e: Exception) {
+            logger.warn("Failed to copy APK resources: ${e.message}")
         }
     }
 

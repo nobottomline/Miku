@@ -14,9 +14,11 @@ dependencies {
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.caffeine)
     implementation(libs.logback)
+    implementation(libs.minio)
 
     // APK/DEX handling
     implementation(libs.dex2jar.translator)
     implementation(libs.dex2jar.tools)
     implementation(libs.apk.parser)
+    implementation("org.ow2.asm:asm:9.7.1")
 }

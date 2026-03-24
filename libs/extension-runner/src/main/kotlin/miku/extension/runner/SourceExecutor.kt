@@ -7,20 +7,26 @@ import eu.kanade.tachiyomi.source.model.Page
 import eu.kanade.tachiyomi.source.model.SChapter
 import eu.kanade.tachiyomi.source.model.SManga
 import eu.kanade.tachiyomi.source.online.HttpSource
-import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.*
 import org.slf4j.LoggerFactory
+import java.io.IOException
+import java.util.concurrent.ConcurrentHashMap
 import kotlin.time.Duration
 import kotlin.time.Duration.Companion.seconds
 
 class SourceExecutor(
     private val registry: ExtensionRegistry,
     private val defaultTimeout: Duration = 30.seconds,
+    private val maxRetries: Int = 1,
 ) {
     private val logger = LoggerFactory.getLogger(SourceExecutor::class.java)
 
+    // Request coalescing: only one in-flight request per unique key
+    private val inFlight = ConcurrentHashMap<String, Deferred<Any?>>()
+
     suspend fun getPopularManga(sourceId: Long, page: Int): MangasPage {
         val source = requireCatalogueSource(sourceId)
-        return executeWithTimeout("getPopularManga") {
+        return coalesce("popular:$sourceId:$page") {
             source.getPopularManga(page)
         }
     }
@@ -30,42 +36,42 @@ class SourceExecutor(
         if (!source.supportsLatest) {
             throw UnsupportedOperationException("Source '${source.name}' does not support latest updates")
         }
-        return executeWithTimeout("getLatestUpdates") {
+        return coalesce("latest:$sourceId:$page") {
             source.getLatestUpdates(page)
         }
     }
 
     suspend fun searchManga(sourceId: Long, page: Int, query: String, filters: FilterList = FilterList()): MangasPage {
         val source = requireCatalogueSource(sourceId)
-        return executeWithTimeout("searchManga") {
+        return coalesce("search:$sourceId:${query.hashCode()}:$page") {
             source.getSearchManga(page, query, filters)
         }
     }
 
     suspend fun getMangaDetails(sourceId: Long, manga: SManga): SManga {
         val source = requireCatalogueSource(sourceId)
-        return executeWithTimeout("getMangaDetails") {
+        return coalesce("details:$sourceId:${manga.url.hashCode()}") {
             source.getMangaDetails(manga)
         }
     }
 
     suspend fun getChapterList(sourceId: Long, manga: SManga): List<SChapter> {
         val source = requireCatalogueSource(sourceId)
-        return executeWithTimeout("getChapterList") {
+        return coalesce("chapters:$sourceId:${manga.url.hashCode()}") {
             source.getChapterList(manga)
         }
     }
 
     suspend fun getPageList(sourceId: Long, chapter: SChapter): List<Page> {
         val source = requireCatalogueSource(sourceId)
-        return executeWithTimeout("getPageList") {
+        return coalesce("pages:$sourceId:${chapter.url.hashCode()}") {
             source.getPageList(chapter)
         }
     }
 
     suspend fun getImageUrl(sourceId: Long, page: Page): String {
         val source = requireCatalogueSource(sourceId)
-        return executeWithTimeout("getImageUrl") {
+        return executeWithRetry("getImageUrl") {
             if (source is HttpSource) {
                 source.getImageUrl(page)
             } else {
@@ -89,22 +95,75 @@ class SourceExecutor(
             ?: throw SourceNotFoundException("Source not found: $sourceId")
     }
 
-    private suspend fun <T> executeWithTimeout(
+    /**
+     * Request coalescing: if an identical request is already in-flight,
+     * wait for its result instead of making a duplicate request.
+     * Prevents flooding the source when multiple clients request the same data.
+     */
+    @Suppress("UNCHECKED_CAST")
+    private suspend fun <T> coalesce(key: String, block: suspend () -> T): T {
+        // Check if there's already an in-flight request for this key
+        val existing = inFlight[key]
+        if (existing != null && existing.isActive) {
+            return try {
+                existing.await() as T
+            } catch (e: Exception) {
+                // If the original request failed, try ourselves
+                executeWithRetry(key, block = block)
+            }
+        }
+
+        // Start new request
+        val deferred = coroutineScope {
+            async {
+                executeWithRetry(key, block = block)
+            }
+        }
+
+        inFlight[key] = deferred as Deferred<Any?>
+
+        return try {
+            deferred.await()
+        } finally {
+            inFlight.remove(key)
+        }
+    }
+
+    /**
+     * Execute with timeout and retry on transient failures.
+     * Retries on IOException (network issues) and timeout.
+     */
+    private suspend fun <T> executeWithRetry(
         operation: String,
         timeout: Duration = defaultTimeout,
         block: suspend () -> T,
     ): T {
-        return try {
-            withTimeout(timeout) {
-                block()
+        var lastException: Exception? = null
+
+        for (attempt in 0..maxRetries) {
+            try {
+                return withTimeout(timeout) { block() }
+            } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
+                lastException = SourceTimeoutException("Operation '$operation' timed out after $timeout")
+                if (attempt < maxRetries) {
+                    logger.warn("Timeout on $operation (attempt ${attempt + 1}/$maxRetries), retrying...")
+                    delay(500) // Brief delay before retry
+                }
+            } catch (e: IOException) {
+                lastException = SourceExecutionException("Network error in '$operation': ${e.message}", e)
+                if (attempt < maxRetries) {
+                    logger.warn("IO error on $operation (attempt ${attempt + 1}/$maxRetries), retrying: ${e.message}")
+                    delay(500)
+                }
+            } catch (e: Exception) {
+                // Non-transient errors — don't retry
+                logger.error("Error executing $operation", e)
+                throw SourceExecutionException("Failed to execute '$operation': ${e.message}", e)
             }
-        } catch (e: kotlinx.coroutines.TimeoutCancellationException) {
-            logger.error("Timeout executing $operation after $timeout")
-            throw SourceTimeoutException("Operation '$operation' timed out after $timeout")
-        } catch (e: Exception) {
-            logger.error("Error executing $operation", e)
-            throw SourceExecutionException("Failed to execute '$operation': ${e.message}", e)
         }
+
+        logger.error("All retries exhausted for $operation")
+        throw lastException ?: SourceExecutionException("Failed to execute '$operation'", RuntimeException("Unknown error"))
     }
 
     private fun okhttp3.Headers.toMap(): Map<String, String> {
@@ -118,4 +177,4 @@ class SourceExecutor(
 
 class SourceNotFoundException(message: String) : RuntimeException(message)
 class SourceTimeoutException(message: String) : RuntimeException(message)
-class SourceExecutionException(message: String, cause: Throwable) : RuntimeException(message, cause)
+class SourceExecutionException(message: String, cause: Throwable? = null) : RuntimeException(message, cause)

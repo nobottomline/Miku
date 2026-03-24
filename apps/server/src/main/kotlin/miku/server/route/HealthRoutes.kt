@@ -6,10 +6,12 @@ import io.ktor.server.routing.*
 import kotlinx.serialization.Serializable
 import miku.extension.runner.ExtensionRegistry
 import miku.server.BuildInfo
-import org.koin.java.KoinJavaComponent.inject
+import miku.server.config.getActiveWebSocketCount
+import miku.server.service.RedisCacheService
 
 fun Route.healthRoutes() {
-    val registry : ExtensionRegistry by lazy { org.koin.java.KoinJavaComponent.getKoin().get() }
+    val registry: ExtensionRegistry by lazy { org.koin.java.KoinJavaComponent.getKoin().get() }
+    val cache: RedisCacheService by lazy { org.koin.java.KoinJavaComponent.getKoin().get() }
 
     get("/health") {
         call.respond(HttpStatusCode.OK, HealthResponse(
@@ -17,6 +19,8 @@ fun Route.healthRoutes() {
             version = BuildInfo.VERSION,
             extensions = registry.getExtensionCount(),
             sources = registry.getSourceCount(),
+            wsConnections = getActiveWebSocketCount(),
+            redisConnected = cache.isAvailable(),
         ))
     }
 }
@@ -27,4 +31,6 @@ data class HealthResponse(
     val version: String,
     val extensions: Int,
     val sources: Int,
+    val wsConnections: Int = 0,
+    val redisConnected: Boolean = false,
 )

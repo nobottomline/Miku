@@ -43,6 +43,9 @@ fun Route.sourceRoutes() {
             val sourceId = call.parameters["sourceId"]?.toLongOrNull()
                 ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid source ID"))
             val page = call.parameters["page"]?.toIntOrNull() ?: 1
+                if (page < 1 || page > 10000) {
+                    return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid page number"))
+                }
             val result = sourceService.getPopularManga(sourceId, page)
             call.respond(result)
         }
@@ -51,6 +54,9 @@ fun Route.sourceRoutes() {
             val sourceId = call.parameters["sourceId"]?.toLongOrNull()
                 ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid source ID"))
             val page = call.parameters["page"]?.toIntOrNull() ?: 1
+                if (page < 1 || page > 10000) {
+                    return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid page number"))
+                }
             val result = sourceService.getLatestUpdates(sourceId, page)
             call.respond(result)
         }
@@ -61,6 +67,9 @@ fun Route.sourceRoutes() {
             val query = call.parameters["q"]
                 ?: return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Missing query parameter 'q'"))
             val page = call.parameters["page"]?.toIntOrNull() ?: 1
+                if (page < 1 || page > 10000) {
+                    return@get call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid page number"))
+                }
 
             // Input validation
             if (query.length > 200) {

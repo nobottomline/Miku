@@ -73,8 +73,12 @@ class ExposedMangaRepository : MangaRepository {
     }
 
     override suspend fun searchLocalManga(query: String, limit: Int): List<Manga> = newSuspendedTransaction {
+        val sanitized = query.lowercase()
+            .replace("\\", "\\\\")
+            .replace("%", "\\%")
+            .replace("_", "\\_")
         MangaTable.selectAll().where {
-            MangaTable.title.lowerCase() like "%${query.lowercase()}%"
+            MangaTable.title.lowerCase() like "%${sanitized}%"
         }.limit(limit).map { it.toManga() }
     }
 

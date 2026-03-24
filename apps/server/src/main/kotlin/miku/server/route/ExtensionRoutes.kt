@@ -83,6 +83,9 @@ fun Route.extensionRoutes() {
         post("/install/{pkg}") {
             val pkg = call.parameters["pkg"]
                 ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Missing package name"))
+                if (!pkg.matches(Regex("^[a-zA-Z0-9._]+$"))) {
+                    return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid package name format"))
+                }
 
             val extension = extensionManager.installFromRepo(pkg)
             call.respond(HttpStatusCode.Created, ExtensionData(
@@ -100,6 +103,9 @@ fun Route.extensionRoutes() {
         post("/update/{pkg}") {
             val pkg = call.parameters["pkg"]
                 ?: return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Missing package name"))
+                if (!pkg.matches(Regex("^[a-zA-Z0-9._]+$"))) {
+                    return@post call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid package name format"))
+                }
 
             val updated = extensionManager.updateExtension(pkg)
             if (updated != null) {
@@ -121,6 +127,9 @@ fun Route.extensionRoutes() {
         delete("/{pkg}") {
             val pkg = call.parameters["pkg"]
                 ?: return@delete call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Missing package name"))
+                if (!pkg.matches(Regex("^[a-zA-Z0-9._]+$"))) {
+                    return@delete call.respond(HttpStatusCode.BadRequest, mapOf("error" to "Invalid package name format"))
+                }
 
             val success = extensionManager.uninstallExtension(pkg)
             if (success) {

@@ -9,7 +9,10 @@ import miku.server.route.imageProxyRoutes
 import miku.server.route.libraryRoutes
 import miku.server.route.mangaRoutes
 import miku.server.route.sourceRoutes
+import miku.server.route.cloudflareRoutes
 import miku.server.route.healthRoutes
+import miku.server.route.downloadRoutes
+import miku.server.route.repoRoutes
 
 fun Application.configureRouting() {
     // GraphQL has its own routing block to avoid plugin conflicts
@@ -26,6 +29,9 @@ fun Application.configureRouting() {
             libraryRoutes()
             extensionRoutes()
             imageProxyRoutes()
+            cloudflareRoutes()
+            repoRoutes()
+            downloadRoutes()
         }
     }
 }

@@ -110,7 +110,7 @@ export default function App() {
   )
 }
 
-function MangaDetails({ sourceId, mangaUrl, onReadChapter, onBack }: {
+function MangaDetails({ sourceId, mangaUrl, onReadChapter, onBack: _onBack }: {
   sourceId: string; mangaUrl: string
   onReadChapter: (url: string, name: string) => void; onBack: () => void
 }) {
